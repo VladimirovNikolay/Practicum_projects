@@ -1,0 +1,96 @@
+/*анализ компании «Мегасеть» — федерального оператора сотовой связи.
+Для каждого клиента посчитайте объём услуг, который превышает установленные тарифом лимиты без дополнительной оплаты. Эта информация потребуется для расчётов трат клиента с учётом тарифного плана. */
+-- Суммарная длительность разговоров клиента в месяц:
+WITH monthly_duration AS (
+    SELECT user_id,
+           -- Выделяем месяц из даты звонка: 
+           DATE_TRUNC('month', call_date::timestamp)::date AS dt_month,    
+           CEIL(SUM(duration)) AS month_duration
+    FROM telecom.calls
+    GROUP BY user_id, dt_month
+),
+-- Суммарное количество потраченного интернет-трафика в месяц:
+monthly_internet AS (
+    SELECT user_id,
+           DATE_TRUNC('month', session_date::timestamp)::date AS dt_month,  
+           SUM(mb_used) AS month_mb_traffic
+    FROM telecom.internet
+    GROUP BY user_id, dt_month
+),
+-- Суммарное количество сообщений в месяц:
+monthly_sms AS (
+    SELECT user_id,
+           DATE_TRUNC('month', message_date::timestamp)::date AS dt_month,  
+           COUNT(message_date) AS month_sms
+    FROM telecom.messages
+    GROUP BY user_id, dt_month
+),
+-- Формирование уникальной пары значений user_id и dt_month:
+user_activity_months AS (
+    -- Первое множество значений user_id и dt_month с учётом разговорной активности клиента:
+    SELECT user_id, dt_month
+    FROM monthly_duration
+    UNION
+    -- Второе множество значений user_id и dt_month с учётом интернет-активности клиента:
+    SELECT user_id, dt_month
+    FROM monthly_internet   
+    UNION
+    -- Третье множество значений user_id и dt_month с учётом активности клиента по сообщениям:
+    SELECT user_id, dt_month
+    FROM monthly_sms
+),
+-- Соединение посчитанных значений активности клиента в одну таблицу:
+users_stat AS (
+    SELECT 
+        u.user_id,
+        u.dt_month,
+        month_duration,
+        month_mb_traffic,
+        month_sms
+    -- В качестве основной таблицы используем данные из CTE user_activity_months:
+    FROM user_activity_months AS u
+    -- Последовательно присоединяем данные по звонкам, интернет-трафику и сообщениям.
+    -- При объединении данных используем пары значений user_id и dt_month:
+    LEFT JOIN monthly_duration AS md ON u.user_id = md.user_id AND u.dt_month= md.dt_month
+    LEFT JOIN monthly_internet AS mi ON u.user_id = mi.user_id AND u.dt_month= mi.dt_month
+    LEFT JOIN monthly_sms AS mm ON u.user_id = mm.user_id AND u.dt_month= mm.dt_month
+),
+user_over_limits AS 
+(
+    SELECT
+    us.user_id, 
+    us.dt_month,
+    t.tariff_name AS tariff,
+    month_duration,
+    month_mb_traffic,
+    month_sms,
+    CASE
+        WHEN tariff_name='ultra' AND month_duration > t.minutes_included
+        THEN month_duration - t.minutes_included
+        WHEN tariff_name='smart' AND month_duration > t.minutes_included
+        THEN month_duration - t.minutes_included
+        ELSE 0
+    END AS duration_over,
+    CASE
+        WHEN tariff_name='ultra' AND month_mb_traffic > t.mb_per_month_included
+        THEN (month_mb_traffic - t.mb_per_month_included)::real / 1024
+        WHEN tariff_name='smart' AND month_mb_traffic > t.mb_per_month_included
+        THEN (month_mb_traffic - t.mb_per_month_included)::real / 1024
+        ELSE 0
+    END AS gb_traffic_over,
+    CASE 
+        WHEN tariff_name='ultra' AND month_sms > t.messages_included
+        THEN month_sms - t.messages_included
+        WHEN tariff_name='smart' AND month_sms > t.messages_included
+        THEN month_sms - t.messages_included
+        ELSE 0
+    END AS sms_over
+    FROM users_stat AS us
+    LEFT JOIN telecom.users AS u ON us.user_id = u.user_id
+    LEFT JOIN telecom.tariffs AS t ON u.tariff = t.tariff_name
+)
+
+SELECT *
+FROM user_over_limits
+ORDER BY user_id, dt_month
+LIMIT 10
