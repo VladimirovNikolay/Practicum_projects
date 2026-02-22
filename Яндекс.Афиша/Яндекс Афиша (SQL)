@@ -1,0 +1,77 @@
+1. Вычислите общие значения ключевых показателей сервиса за весь период:
+Напишите запрос для вычисления этих значений. Поскольку данные представлены в российских рублях и казахстанских тенге, то значения посчитайте в разрезе каждой валюты
+
+select
+    sum(revenue) as total_revenue,
+    count(distinct order_id) as total_orders,
+    avg(revenue) as avg_revenue_per_order,
+    count(distinct user_id) as total_users,
+    currency_code
+from afisha.purchases
+group by currency_code
+order by total_revenue desc
+
+2. Для заказов в рублях вычислите распределение выручки и количества заказов по типу устройства device_type_canonical. 
+
+WITH set_config_precode AS (
+  SELECT set_config('synchronize_seqscans', 'off', true)
+)
+
+SELECT
+    device_type_canonical,
+    sum(revenue) as total_revenue,
+    count(order_id) as total_orders,
+    avg(revenue) as avg_revenue_per_order,
+    round(sum(revenue)::numeric / (select sum(revenue)::numeric from afisha.purchases where currency_code = 'rub'), 3) as revenue_share
+from afisha.purchases
+where currency_code = 'rub'
+group by device_type_canonical
+order by revenue_share desc
+
+3. Для заказов в рублях вычислите распределение количества заказов и их выручку в зависимости от типа мероприятия event_type_main. 
+
+SELECT
+    e.event_type_main,
+    SUM(p.revenue) AS total_revenue,
+    COUNT(p.order_id) AS total_orders,
+    AVG(p.revenue) AS avg_revenue_per_order,
+    COUNT(DISTINCT e.event_name_code) AS total_event_name,
+    AVG(p.tickets_count) AS avg_tickets,
+    SUM(p.revenue)/ SUM(p.tickets_count) AS avg_ticket_revenue,
+    ROUND(SUM(p.revenue)::numeric / (SELECT SUM(revenue) FROM afisha.purchases WHERE currency_code = 'rub')::numeric, 3) AS revenue_share
+FROM afisha.purchases as p
+LEFT JOIN afisha.events as e ON p.event_id = e.event_id
+WHERE p.currency_code = 'rub' AND e.event_type_main IS NOT NULL
+GROUP BY e.event_type_main
+ORDER BY total_orders DESC;
+
+4. Выведите топ-7 регионов по значению общей выручки, включив только заказы за рубли.
+
+select 
+    r.region_name,
+    sum(p.revenue) as total_revenue,
+    count(distinct p.order_id) as total_orders,
+    count(distinct p.user_id) as total_users,
+    sum(p.tickets_count) as total_tickets,
+    sum(p.revenue) / sum(p.tickets_count) as one_ticket_cost
+from afisha.purchases as p
+left join afisha.events as e on p.event_id = e.event_id
+left join afisha.city as c on e.city_id = c.city_id
+left join afisha.regions as r on c.region_id = r.region_id
+where p.currency_code = 'rub'
+group by r.region_name
+order by total_revenue desc
+limit 7
+
+5. Для заказов в рублях вычислите изменение выручки, количества заказов, уникальных клиентов и средней стоимости одного заказа в недельной динамике.
+
+select
+    DATE_TRUNC('WEEK', created_dt_msk)::date as week,
+    sum(revenue) as total_revenue,
+    count(order_id) as total_orders,
+    count(distinct user_id) as total_users,
+    sum(revenue) / count(order_id) as revenue_per_order
+from afisha.purchases
+where currency_code = 'rub'
+group by DATE_TRUNC('WEEK', created_dt_msk)
+order by week asc
