@@ -86,7 +86,7 @@ https://datalens.yandex/ffzg5n9ituw00
 # Project Files
 
 Jupyter Notebook:  
-https://github.com/VladimirovNikolay/Practicum_projects/blob/Яндекс-Практикум/Яндекс.Афиша/Я.Aфиша%20(Python%20%7C%20jupyter)
+[Яндекс.Афиша.ipynb](https://github.com/VladimirovNikolay/Practicum_projects/blob/Яндекс-Практикум/Яндекс.Афиша/Я.Aфиша%20(Python%20%7C%20jupyter))
 
 Проекты курса:  
 https://github.com/VladimirovNikolay/Practicum_projects
